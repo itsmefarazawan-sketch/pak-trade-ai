@@ -9,23 +9,28 @@ async function getAllPrices() {
       `https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest?limit=100&convert=USDT`,
       {
         headers: {
-          'X-CMC_PRO_API_KEY': process.env.COINMARKETCAP_API_KEY!,
+          'X-CMC_PRO_API_KEY': process.env.COINMARKETCAP_API_KEY!, // 👈 Yahan key lag rahi hai
           'Accept': 'application/json'
         },
-        next: { revalidate: 60 } // har 60 sec baad refresh
+        next: { revalidate: 60 } // har 60 sec baad nayi price
       }
     );
     
-    if (!res.ok) throw new Error("CMC API failed");
+    if (!res.ok) {
+      console.error("CMC Error:", await res.text());
+      return "Could not fetch prices from CoinMarketCap.";
+    }
     
     const data = await res.json();
     
     let priceText = "Live Top 100 Crypto Prices in USDT:\n";
     data.data.forEach((coin: any) => {
-      priceText += `${coin.symbol}: $${coin.quote.USDT.price.toFixed(4)}\n`;
+      const price = coin.quote.USDT.price;
+      priceText += `${coin.symbol}: $${price.toFixed(4)}\n`;
     });
     return priceText;
   } catch (e) {
+    console.error(e);
     return "Could not fetch prices from CoinMarketCap.";
   }
 }
@@ -33,12 +38,12 @@ async function getAllPrices() {
 export async function POST(req: Request) {
   const { message } = await req.json();
   
-  const prices = await getAllPrices(); // Live CMC data
+  const prices = await getAllPrices(); // Pehle live data le lo
   
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
   
   const prompt = `
-  You are PakTrade AI. You are a professional crypto analyst.
+  You are PakTrade AI. You are a professional crypto analyst for Pakistani traders.
   ${prices}
   
   User question: ${message}
@@ -46,8 +51,8 @@ export async function POST(req: Request) {
   Rules: 
     1. Use ONLY the prices above. Do NOT make up prices.
     2. Give clear signal first: SIGNAL: BUY / SELL / WAIT
-    3. Then give Entry, SL, TP
-    4. Keep it short and direct. This is not financial advice.
+    3. Then give Entry, SL, TP with USDT prices
+  4. Keep it short, 4-5 lines max. This is not financial advice.
   `;
   
   const result = await model.generateContent(prompt);
